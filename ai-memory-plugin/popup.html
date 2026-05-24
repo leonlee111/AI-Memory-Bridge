@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Memory Bridge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- 头部 -->
+    <div class="header">
+      <div class="header-left">
+        <span class="logo">🧠</span>
+        <div>
+          <div class="app-name">AI Memory Bridge</div>
+          <div class="app-sub" id="platform-info">加载中...</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn" id="btn-settings" title="设置">⚙️</button>
+        <button class="icon-btn" id="btn-open-panel" title="在当前页面打开面板">🖥️</button>
+      </div>
+    </div>
+
+    <!-- 标签页 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="memories">记忆库</button>
+      <button class="tab" data-tab="groups">项目组</button>
+      <button class="tab" data-tab="quick">快速注入</button>
+      <button class="tab" data-tab="settings">设置</button>
+    </div>
+
+    <!-- 记忆库 Tab -->
+    <div class="tab-content active" id="tab-memories">
+      <div class="search-bar">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" placeholder="搜索记忆..." />
+        </div>
+        <select id="tag-filter">
+          <option value="all">全部</option>
+          <option value="通用">通用</option>
+          <option value="编程">编程</option>
+          <option value="写作">写作</option>
+          <option value="分析">分析</option>
+          <option value="自定义">自定义</option>
+        </select>
+      </div>
+
+      <div class="stats-bar">
+        <span id="memory-count">0 条记忆</span>
+        <div class="stats-btns">
+          <button class="mini-btn" id="btn-batch">☑ 批量</button>
+          <button class="mini-btn" id="btn-new">✏️ 新建</button>
+          <button class="mini-btn" id="btn-export">📤 导出</button>
+          <button class="mini-btn" id="btn-import">📥 导入</button>
+          <input type="file" id="import-file" accept=".json" style="display:none">
+        </div>
+      </div>
+
+      <!-- 批量操作栏 -->
+      <div id="batch-bar" style="display:flex;padding:6px 12px;background:rgba(102,126,234,0.08);border-bottom:1px solid rgba(102,126,234,0.15);flex-shrink:0;flex-direction:row;align-items:center;gap:8px;">
+        <span id="batch-count" style="font-size:11px;color:#818cf8;font-weight:500;flex:1;">0 条已选</span>
+        <button class="mini-btn" id="btn-select-all" style="font-size:10px;padding:3px 7px;">☑ 全选</button>
+        <button class="mini-btn" id="btn-deselect-all" style="font-size:10px;padding:3px 7px;">☐ 取消</button>
+        <button class="mini-btn" id="btn-delete-selected" style="font-size:10px;padding:3px 7px;background:rgba(239,68,68,0.15)!important;color:#f87171!important;" disabled>🗑 删除选中</button>
+      </div>
+
+      <div class="memory-list" id="memory-list">
+        <div class="empty-state">
+          <div class="empty-icon">🧠</div>
+          <div class="empty-text">记忆库为空</div>
+          <div class="empty-sub">在 Gemini / DeepSeek 等页面点击悬浮按钮📥抓取指令</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 项目组 Tab -->
+    <div class="tab-content" id="tab-groups">
+      <div class="stats-bar">
+        <span id="group-count">0 个项目组</span>
+        <div class="stats-btns">
+          <button class="mini-btn" id="btn-merge-groups">🔗 合并</button>
+          <button class="mini-btn" id="btn-refresh-groups">🔄 刷新</button>
+        </div>
+      </div>
+      <div class="memory-list" id="group-list">
+        <div class="empty-state">
+          <div class="empty-icon">📁</div>
+          <div class="empty-text">暂无项目组</div>
+          <div class="empty-sub">在AI页面扫描指令后选择「保存为项目组」</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 快速注入 Tab -->
+    <div class="tab-content" id="tab-quick">
+      <div class="quick-header">
+        <div class="quick-title">选择记忆 → 一键注入当前AI页面</div>
+        <div id="current-platform" class="current-platform">检测中...</div>
+      </div>
+      <div class="memory-list" id="quick-list">
+        <div class="empty-state">
+          <div class="empty-icon">📤</div>
+          <div class="empty-text">暂无记忆可注入</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设置 Tab -->
+    <div class="tab-content" id="tab-settings">
+      <div class="settings-section">
+        <div class="settings-title">🎛️ 界面设置</div>
+        <div class="setting-item">
+          <span>显示悬浮按钮</span>
+          <label class="toggle">
+            <input type="checkbox" id="setting-float-btn" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="setting-item">
+          <span>自动抓取模式</span>
+          <label class="toggle">
+            <input type="checkbox" id="setting-auto-capture">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">📌 默认标签</div>
+        <select class="full-select" id="setting-default-tag">
+          <option value="通用">通用</option>
+          <option value="编程">编程</option>
+          <option value="写作">写作</option>
+          <option value="分析">分析</option>
+          <option value="自定义">自定义</option>
+        </select>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">🌐 支持的平台</div>
+        <div class="platform-list">
+          <div class="platform-item"><span class="p-dot" style="background:#4285f4"></span>Gemini</div>
+          <div class="platform-item"><span class="p-dot" style="background:#1a73e8"></span>DeepSeek</div>
+          <div class="platform-item"><span class="p-dot" style="background:#d97706"></span>Claude</div>
+          <div class="platform-item"><span class="p-dot" style="background:#10a37f"></span>ChatGPT</div>
+          <div class="platform-item"><span class="p-dot" style="background:#7c3aed"></span>Kimi</div>
+          <div class="platform-item"><span class="p-dot" style="background:#f59e0b"></span>通义千问</div>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">🤖 AI 辅助笔记</div>
+        <div class="setting-item">
+          <span>API Key</span>
+          <input type="password" id="setting-ai-api-key" class="full-input" placeholder="sk-..." style="flex:1;max-width:200px" />
+        </div>
+        <div class="setting-item">
+          <span>API 地址</span>
+          <input type="text" id="setting-ai-api-endpoint" class="full-input" value="https://api.openai.com/v1/chat/completions" style="flex:1;max-width:200px;font-size:11px" />
+        </div>
+        <div class="setting-item">
+          <span>模型</span>
+          <input type="text" id="setting-ai-api-model" class="full-input" value="gpt-3.5-turbo" style="flex:1;max-width:140px" />
+        </div>
+        <div class="setting-item">
+          <span></span>
+          <button class="mini-btn" id="btn-save-ai-settings">💾 保存 AI 设置</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-title">🗂️ 数据管理</div>
+        <button class="danger-btn" id="btn-clear-all">🗑 清空所有记忆</button>
+      </div>
+      <div class="version-info">AI Memory Bridge v2.0.0 · 跨平台AI指令同步 · 支持项目组</div>
+
+    </div>
+  </div>
+
+  <!-- 新建/编辑模态框 -->
+  <div class="modal-overlay" id="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <span id="modal-title">✏️ 新建记忆</span>
+        <button class="modal-close" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label>标题</label>
+        <input type="text" id="modal-name" placeholder="给这条指令起个名字..." />
+        <label>内容</label>
+        <textarea id="modal-content" placeholder="在这里粘贴你的System Prompt或指令..." rows="7"></textarea>
+        <label>标签</label>
+        <select id="modal-tag">
+          <option value="通用">通用</option>
+          <option value="编程">编程</option>
+          <option value="写作">写作</option>
+          <option value="分析">分析</option>
+          <option value="自定义">自定义</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-cancel">取消</button>
+        <button class="btn-primary" id="modal-save">💾 保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 合并项目组模态框 -->
+  <div class="modal-overlay" id="merge-modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <span>🔗 合并项目组</span>
+        <button class="modal-close" id="merge-modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <label>选择要合并的项目组（可多选）</label>
+        <div id="merge-group-list" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
+        <label>新项目组名称</label>
+        <input type="text" id="merge-group-name" placeholder="合并后的项目组名称" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="merge-modal-cancel">取消</button>
+        <button class="btn-primary" id="merge-modal-confirm">🔗 合并</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="notes_html.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

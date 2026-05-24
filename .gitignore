@@ -1,0 +1,6 @@
+# 只上传 ai-memory-plugin 文件夹
+# 忽略根目录下除 ai-memory-plugin 和 .gitignore 之外的所有内容
+/*
+!/ai-memory-plugin
+!/ai-memory-plugin/icons/
+!.gitignore
