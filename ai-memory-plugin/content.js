@@ -336,8 +336,8 @@
       });
       updatePanelBatchBar();
     });
-    var panelDeleteSelected = document.getElementById('amb-panel-delete-selected');
-    if (panelDeleteSelected) panelDeleteSelected.addEventListener('click', panelDeleteSelected);
+    var panelDeleteBtn = document.getElementById('amb-panel-delete-selected');
+    if (panelDeleteBtn) panelDeleteBtn.addEventListener('click', deletePanelSelectedMemories);
 
     document.querySelectorAll('.amp-tab').forEach(function(tab) {
       tab.addEventListener('click', function() {
@@ -548,6 +548,12 @@
     filtered.forEach(function(item) {
       var text = (item.el.innerText || item.el.textContent || '').trim();
       if (text.length < 3) return;
+
+      // 清理AI回复中的平台前缀（如"Gemini说"、"Gemini:"等）
+      if (item.role === 'ai') {
+        text = text.replace(/^(Gemini|DeepSeek|Claude|ChatGPT|Kimi|通义千问)\s*(说|：|:)\s*/i, '');
+        text = text.replace(/^(Gemini|DeepSeek|Claude|ChatGPT|Kimi|通义千问)\s*/i, '');
+      }
 
       if (item.role === 'user') {
         // 遇到用户消息，先flush累积的AI文本
@@ -901,7 +907,7 @@
     updatePanelBatchBar();
   }
 
-  function panelDeleteSelected() {
+  function deletePanelSelectedMemories() {
     var ids = Array.from(panelSelectedIds);
     if (ids.length === 0) { showToast('⚠️ 请先选择要删除的记忆'); return; }
     if (!confirm('确定删除选中的 ' + ids.length + ' 条记忆？')) return;
