@@ -1,4 +1,4 @@
-# 🧠 AI Memory Bridge v2.2
+# 🧠 AI Memory Bridge v2.3
 
 **跨平台 AI 对话记忆管理插件** — 在 Gemini、DeepSeek、Claude、ChatGPT、Kimi、通义千问 等 AI 平台之间，轻松抓取、保存、管理和注入你的指令与 AI 回复。
 
@@ -9,6 +9,7 @@
 | 功能 | 说明 |
 |------|------|
 | 🔍 **智能扫描** | 一键识别页面中所有用户指令 + AI 回复，带角色标注 |
+| 📎 **文件提取** | 识别对话中的附件/文件卡片，并尽量合并到对应指令或回复内容 |
 | 💾 **记忆库** | 保存、搜索、筛选、置顶、编辑、批量删除 |
 | 📁 **项目组** | 将相关指令分组管理，支持合并、重命名、批量注入 |
 | 📤 **一键注入** | 将保存的指令直接填入 AI 输入框 |
@@ -27,6 +28,7 @@
 
 - **用户指令** 👤 — 你发送给 AI 的问题和指令
 - **AI 回复** 🤖 — AI 的回答内容
+- **对话文件** 📎 — 页面中可见的附件卡片、文件链接、图片/文档资源
 - **四层扫描策略**：
   1. `data-*` 属性（最可靠，ChatGPT/Claude 标准属性）
   2. 平台专属 CSS 选择器
@@ -38,6 +40,15 @@
 - **DeepSeek 特殊处理**：过滤思考过程（thinking/reasoning 块），避免被误识别为用户指令
 - **平台前缀清理**：自动去除 AI 回复开头的 "Gemini说"、"DeepSeek：" 等平台标签
 - **滚动检测**：滚动到底部时自动检测并补充新内容
+- **文件合并**：识别到的文件会优先合并进对应的用户指令或 AI 回复；只有页面完全没有对话内容时，才会作为独立文件条目保存
+
+### 📎 文件提取
+
+文件提取会扫描对话 DOM 中可见的附件信息，包括文件名、类型、大小、链接等。点击页面浮窗中的「🔍」会同时扫描对话和文件；点击「扫文件」可以单独补扫页面附件。
+
+- **不强行下载私有文件**：插件只记录页面可见的文件元数据和可访问链接，不绕过 AI 平台权限读取私有文件。
+- **内容内合并**：文件信息会写入记忆内容末尾的「相关文件」区域，同时保留结构化 `attachments` 字段，便于导出和 AI 笔记整理。
+- **导出联动**：普通 HTML 笔记会展示“相关文件”，AI 辅助笔记会把附件信息一起发给模型整理。
 
 ### 💾 记忆库管理
 
@@ -125,7 +136,7 @@
 ```
 1. 打开任意支持的 AI 平台（Gemini / DeepSeek / Claude / ChatGPT / Kimi / 通义千问）
 2. 点击页面右下角紫色悬浮按钮 🧠 打开面板
-3. 点击 🔍 扫描当前页面所有指令和回复
+3. 点击 🔍 扫描当前页面所有指令、回复和文件
 4. 勾选要保存的条目，点击 💾 保存
 5. 选择保存方式：单条 / 多条 / 项目组
 ```
@@ -159,6 +170,32 @@
 | **ChatGPT** | chatgpt.com | ✅ `[data-message-author-role="user"]` | ✅ `[data-message-author-role="assistant"]` |
 | **Kimi** | kimi.moonshot.cn | ✅ `.chat-message.user` | ✅ `.markdown-body` |
 | **通义千问** | tongyi.aliyun.com | ✅ class 语义匹配 | ✅ `.ant-md-editor-markdown` |
+
+---
+
+## 🛒 商店上架
+
+当前版本已完成 Chrome Web Store / Microsoft Edge Add-ons 上架前准备：
+
+- `manifest.json` 已升级到 Manifest V3，版本号 `2.3.0`
+- 已去除远程 Google Fonts 依赖，减少商店审核风险
+- 商店上传包建议命名为 `AI-Memory-Bridge-v2.3.0-store.zip`
+- ZIP 包内 `manifest.json` 必须位于根目录，可直接上传到 Chrome/Edge 开发者后台
+
+本地打包命令：
+
+```powershell
+if (!(Test-Path .\dist)) { New-Item -ItemType Directory .\dist | Out-Null }
+$items = Get-ChildItem -LiteralPath .\ai-memory-plugin -Force
+Compress-Archive -LiteralPath $items.FullName -DestinationPath .\dist\AI-Memory-Bridge-v2.3.0-store.zip -Force
+```
+
+上架仍需要开发者账号后台人工操作：
+
+1. Chrome Web Store：登录 Chrome Web Store Developer Dashboard，上传 ZIP，填写详情、隐私字段、权限说明、测试说明后提交审核。
+2. Microsoft Edge Add-ons：登录 Partner Center，创建新扩展，上传 ZIP，填写可用市场、隐私信息、商店详情和认证测试说明后提交。
+
+权限说明建议：插件需要读取支持的 AI 页面以扫描对话；需要 `storage` 保存本地记忆；需要 `clipboardWrite` 支持复制/兜底注入；需要网络权限访问用户配置的 OpenAI 兼容 API 端点以生成 AI 笔记。
 
 ---
 
@@ -210,7 +247,16 @@ ai-memory-plugin/
 
 ## 📝 版本历史
 
-### v2.2.0（当前版本）
+### v2.3.0（当前版本）
+
+- ✅ 新增文件提取：识别附件卡片、文件链接、图片/文档资源
+- ✅ 文件信息默认合并到对应指令或回复内容，不再优先拆成独立条目
+- ✅ AI 笔记生成会携带附件信息，普通 HTML 笔记会展示“相关文件”
+- ✅ 修复 AI API 权限与设置覆盖问题，兼容更多 OpenAI 格式返回
+- ✅ 去除远程 Google Fonts 依赖，提升 Chrome/Edge 商店审核友好度
+- ✅ manifest 版本号更新为 `2.3.0`
+
+### v2.2.0
 - ✅ 修复记忆库文本不换行问题（popup + AI 页面面板均修复）
 - ✅ 修复 DeepSeek 思考过程被误识别为用户指令（过滤 thinking/reasoning 块）
 - ✅ 修复 AI 回复被拆成多条的问题（文本级合并策略）

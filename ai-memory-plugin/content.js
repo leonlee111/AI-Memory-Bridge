@@ -541,7 +541,7 @@
             messages.push({
               id: 'msg_' + Date.now() + '_' + messages.length,
               title: '🤖 ' + titleText.slice(0, 45) + (titleText.length > 45 ? '...' : ''),
-              content: text, attachments: pendingAiAttachments.slice(), role: 'ai', selected: true, element: null
+              content: appendAttachmentsToContent(text, pendingAiAttachments), attachments: pendingAiAttachments.slice(), role: 'ai', selected: true, element: null
             });
           }
         }
@@ -572,7 +572,7 @@
         messages.push({
           id: 'msg_' + Date.now() + '_' + messages.length,
           title: '👤 ' + titleText.slice(0, 45) + (titleText.length > 45 ? '...' : ''),
-          content: text, attachments: attachments, role: 'user', selected: true, element: item.el
+          content: appendAttachmentsToContent(text, attachments), attachments: attachments, role: 'user', selected: true, element: item.el
         });
       } else if (item.role === 'ai') {
         // AI消息：累积文本，后续合并
@@ -607,6 +607,15 @@
     var extraFiles = extractPageAttachments().filter(function(file) {
       return !messageFileKeys.has((file.name || '') + '|' + (file.url || ''));
     });
+
+    if (extraFiles.length > 0 && messages.length > 0) {
+      var target = messages.slice().reverse().find(function(msg) {
+        return msg.role === 'user' || msg.role === 'ai';
+      }) || messages[messages.length - 1];
+      target.attachments = mergeAttachments(target.attachments || [], extraFiles);
+      target.content = appendAttachmentsToContent(stripAttachmentBlock(target.content || ''), target.attachments);
+      return messages;
+    }
 
     extraFiles.forEach(function(file, idx) {
       messages.push({
@@ -663,9 +672,28 @@
         existingKeys.add((file.name || '') + '|' + (file.url || ''));
       });
     });
-    var fileItems = files.filter(function(file) {
+    var newFiles = files.filter(function(file) {
       return !existingKeys.has((file.name || '') + '|' + (file.url || ''));
-    }).map(function(file, idx) {
+    });
+
+    if (newFiles.length === 0) {
+      showToast(files.length > 0 ? '📎 文件已在扫描结果中' : '未识别到页面文件');
+      renderScanList();
+      return;
+    }
+
+    if (capturedItems.length > 0) {
+      var target = capturedItems.slice().reverse().find(function(item) {
+        return item.role === 'user' || item.role === 'ai';
+      }) || capturedItems[capturedItems.length - 1];
+      target.attachments = mergeAttachments(target.attachments || [], newFiles);
+      target.content = appendAttachmentsToContent(stripAttachmentBlock(target.content || ''), target.attachments);
+      renderScanList();
+      showToast('📎 已合并 ' + newFiles.length + ' 个文件到对话内容');
+      return;
+    }
+
+    var fileItems = newFiles.map(function(file, idx) {
       return {
         id: 'file_' + Date.now() + '_' + idx,
         title: '📎 ' + (file.name || '对话附件'),
@@ -676,12 +704,6 @@
         element: null
       };
     });
-
-    if (fileItems.length === 0) {
-      showToast(files.length > 0 ? '📎 文件已在扫描结果中' : '未识别到页面文件');
-      renderScanList();
-      return;
-    }
     capturedItems = capturedItems.concat(fileItems);
     renderScanList();
     showToast('📎 已识别 ' + fileItems.length + ' 个文件');
@@ -695,6 +717,17 @@
         + (file.size ? '（' + file.size + '）' : '')
         + (file.url ? '\n  链接：' + file.url : '');
     }).join('\n');
+  }
+
+  function appendAttachmentsToContent(text, attachments) {
+    attachments = attachments || [];
+    var base = stripAttachmentBlock(text || '').trim();
+    if (attachments.length === 0) return base;
+    return (base ? base + '\n\n' : '') + buildAttachmentContent(attachments);
+  }
+
+  function stripAttachmentBlock(text) {
+    return String(text || '').replace(/\n{0,2}相关文件：\n(?:- .+(?:\n  链接：.+)?\n?)+$/m, '').trim();
   }
 
   function inferAttachmentName(label, url) {
