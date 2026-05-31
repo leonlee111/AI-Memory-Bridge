@@ -162,6 +162,7 @@ function buildCard(m, quickMode) {
   const preview = m.content.slice(0, 100).replace(/\n/g, ' ');
   const pinIcon = m.pinned ? '<span class="card-pin-icon">📌</span>' : '';
   const groupInfo = m.groupId ? '<span class="card-group-badge">📁 项目组</span>' : '';
+  const fileInfo = m.attachments && m.attachments.length ? '<span class="card-files">📎 ' + m.attachments.length + ' 文件</span>' : '';
   const cbHtml = !quickMode ? '<input type="checkbox" class="batch-cb" data-id="' + m.id + '" style="display:none;accent-color:#667eea;width:14px;height:14px;flex-shrink:0;cursor:pointer;" />' : '';
   return [
     '<div class="memory-card ' + (m.pinned ? 'pinned' : '') + '" data-id="' + m.id + '">',
@@ -175,6 +176,7 @@ function buildCard(m, quickMode) {
     '  <div class="card-footer">',
     '    <span class="card-source">' + escapeHtml(m.sourcePlatform || '未知') + '</span>',
     '    ' + groupInfo,
+    '    ' + fileInfo,
     '    <span class="card-uses">用了 ' + (m.usageCount || 0) + ' 次</span>',
     '    <div class="card-actions">',
     '      <button class="btn-inject" data-id="' + m.id + '" title="注入到当前页面输入框">📤 注入</button>',
@@ -543,8 +545,11 @@ function saveSettings() {
     autoCapture: document.getElementById('setting-auto-capture').checked,
     defaultTag: document.getElementById('setting-default-tag').value
   };
-  chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: settings }, () => {
-    showToast('⚙️ 设置已保存');
+  chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, (res) => {
+    const existing = (res && res.success) ? res.settings : {};
+    chrome.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: { ...existing, ...settings } }, () => {
+      showToast('⚙️ 设置已保存');
+    });
   });
 }
 
@@ -739,9 +744,12 @@ function exportGroupAsAIGeneratedNotes(groupId) {
       const m = sorted[i];
       if (m.role === 'user') {
         const nx = sorted[i + 1];
-        if (nx && nx.role === 'ai') { pairs.push({ q: m.content, a: nx.content }); i += 2; }
-        else { pairs.push({ q: m.content, a: '' }); i++; }
-      } else { pairs.push({ q: '', a: m.content }); i++; }
+        if (nx && nx.role === 'ai') {
+          pairs.push({ q: m.content, a: nx.content, qAttachments: m.attachments || [], aAttachments: nx.attachments || [] });
+          i += 2;
+        }
+        else { pairs.push({ q: m.content, a: '', qAttachments: m.attachments || [], aAttachments: [] }); i++; }
+      } else { pairs.push({ q: '', a: m.content, qAttachments: [], aAttachments: m.attachments || [] }); i++; }
     }
 
     chrome.runtime.sendMessage({

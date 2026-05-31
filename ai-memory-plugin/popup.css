@@ -372,6 +372,15 @@ body {
   margin-bottom: 10px;
 }
 .settings-title { font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 10px; }
+.setting-note {
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.55;
+  background: rgba(102,126,234,0.08);
+  border: 1px solid rgba(102,126,234,0.14);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
 .setting-item {
   display: flex;
   align-items: center;
@@ -571,3 +580,25 @@ body {
   z-index: 200;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.full-input {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 8px 10px;
+  outline: none;
+  font-family: inherit;
+}
+.full-input:focus { border-color: rgba(102,126,234,0.5); }
+.setting-item .full-input { flex: 1; min-width: 0; }
+
+.card-files {
+  font-size: 10px;
+  background: rgba(168,85,247,0.14);
+  color: #c4b5fd;
+  padding: 1px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}

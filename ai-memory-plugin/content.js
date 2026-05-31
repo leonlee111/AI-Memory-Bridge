@@ -233,6 +233,7 @@
       '<div class="amp-tab-content active" id="amp-tab-scan">',
       '  <div class="amp-scan-info">',
       '    <span id="amb-scan-count">未扫描</span>',
+      '    <button class="amp-mini-btn" id="amb-scan-files-btn">扫文件</button>',
       '    <button class="amp-mini-btn" id="amb-select-all-btn">全选</button>',
       '    <button class="amp-mini-btn" id="amb-deselect-all-btn">取消</button>',
       '  </div>',
@@ -298,6 +299,7 @@
   function bindPanelEvents() {
     document.getElementById('amb-close-btn').addEventListener('click', togglePanel);
     document.getElementById('amb-scan-btn').addEventListener('click', scanPageMessages);
+    document.getElementById('amb-scan-files-btn').addEventListener('click', scanPageFilesOnly);
     document.getElementById('amb-capture-btn').addEventListener('click', openSaveModal);
     document.getElementById('amb-new-btn').addEventListener('click', function() { openSingleSaveModal('', ''); });
     document.getElementById('amb-export-btn').addEventListener('click', exportMemories);
@@ -525,29 +527,33 @@
     var seenContent = new Set();
     var messages = [];
     var pendingAiText = null; // 用于累积相邻AI片段的文本
+    var pendingAiAttachments = [];
 
     function flushPendingAi() {
       if (pendingAiText !== null) {
         var text = pendingAiText.trim();
-        if (text.length >= 3) {
-          var key = text.length + '|' + text.slice(0, 80);
+        if (text.length >= 3 || pendingAiAttachments.length > 0) {
+          var key = text.length + '|' + text.slice(0, 80) + '|' + pendingAiAttachments.map(function(f) { return f.name; }).join(',');
           if (!seenContent.has(key)) {
             seenContent.add(key);
             var titleText = text.replace(/\n+/g, ' ').trim();
+            if (!titleText && pendingAiAttachments.length > 0) titleText = '附件：' + pendingAiAttachments[0].name;
             messages.push({
               id: 'msg_' + Date.now() + '_' + messages.length,
               title: '🤖 ' + titleText.slice(0, 45) + (titleText.length > 45 ? '...' : ''),
-              content: text, role: 'ai', selected: true, element: null
+              content: text, attachments: pendingAiAttachments.slice(), role: 'ai', selected: true, element: null
             });
           }
         }
         pendingAiText = null;
+        pendingAiAttachments = [];
       }
     }
 
     filtered.forEach(function(item) {
+      var attachments = extractAttachments(item.el);
       var text = (item.el.innerText || item.el.textContent || '').trim();
-      if (text.length < 3) return;
+      if (text.length < 3 && attachments.length === 0) return;
 
       // 清理AI回复中的平台前缀（如"Gemini说"、"Gemini:"等）
       if (item.role === 'ai') {
@@ -558,32 +564,179 @@
       if (item.role === 'user') {
         // 遇到用户消息，先flush累积的AI文本
         flushPendingAi();
-        var key = text.length + '|' + text.slice(0, 80);
+        var key = text.length + '|' + text.slice(0, 80) + '|' + attachments.map(function(f) { return f.name; }).join(',');
         if (seenContent.has(key)) return;
         seenContent.add(key);
         var titleText = text.replace(/\n+/g, ' ').trim();
+        if (!titleText && attachments.length > 0) titleText = '附件：' + attachments[0].name;
         messages.push({
           id: 'msg_' + Date.now() + '_' + messages.length,
           title: '👤 ' + titleText.slice(0, 45) + (titleText.length > 45 ? '...' : ''),
-          content: text, role: 'user', selected: true, element: item.el
+          content: text, attachments: attachments, role: 'user', selected: true, element: item.el
         });
       } else if (item.role === 'ai') {
         // AI消息：累积文本，后续合并
         if (pendingAiText === null) {
           pendingAiText = text;
+          pendingAiAttachments = attachments;
         } else {
           // 检查是否与之前的AI文本有重叠（避免重复累积）
           var overlap = pendingAiText.slice(-100);
           if (text.indexOf(overlap) === -1) {
             pendingAiText += '\n\n' + text;
           }
+          pendingAiAttachments = mergeAttachments(pendingAiAttachments, attachments);
         }
       }
     });
     // 最后flush
     flushPendingAi();
 
+    messages = appendPageAttachments(messages);
     return messages;
+  }
+
+  function appendPageAttachments(messages) {
+    var messageFileKeys = new Set();
+    messages.forEach(function(msg) {
+      (msg.attachments || []).forEach(function(file) {
+        messageFileKeys.add((file.name || '') + '|' + (file.url || ''));
+      });
+    });
+
+    var extraFiles = extractPageAttachments().filter(function(file) {
+      return !messageFileKeys.has((file.name || '') + '|' + (file.url || ''));
+    });
+
+    extraFiles.forEach(function(file, idx) {
+      messages.push({
+        id: 'file_' + Date.now() + '_' + idx,
+        title: '📎 ' + (file.name || '对话附件'),
+        content: buildAttachmentContent([file]),
+        attachments: [file],
+        role: 'file',
+        selected: true,
+        element: null
+      });
+    });
+    return messages;
+  }
+
+  function extractAttachments(root) {
+    if (!root) return [];
+    var fileExt = /\.(pdf|docx?|xlsx?|pptx?|txt|md|csv|tsv|json|xml|zip|rar|7z|tar|gz|png|jpe?g|gif|webp|svg|mp[34]|wav|m4a|py|js|ts|tsx|jsx|c|cc|cpp|h|hpp|sv|v|vh|java|go|rs|sh|bat|ps1|log)(\?|#|$)/i;
+    var attachmentHint = /(attach|attachment|file|upload|document|image|文件|附件|上传|图片|文档)/i;
+    var candidates = root.querySelectorAll('a[href], [download], img[src], video[src], audio[src], object[data], embed[src], [data-testid*="attach" i], [data-testid*="file" i], [class*="attach" i], [class*="file" i], [aria-label*="文件"], [aria-label*="附件"], [aria-label*="file" i], [title]');
+    var files = [];
+    candidates.forEach(function(el) {
+      var url = el.getAttribute('href') || el.getAttribute('src') || el.getAttribute('data') || '';
+      var label = el.getAttribute('download') || el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('alt') || (el.innerText || el.textContent || '').trim();
+      var classText = (el.className && typeof el.className === 'string') ? el.className : '';
+      var testId = el.getAttribute('data-testid') || '';
+      var raw = (label + ' ' + url).trim();
+      var looksLikeFile = fileExt.test(raw) || attachmentHint.test(classText) || attachmentHint.test(testId) || el.hasAttribute('download');
+      if (!looksLikeFile) return;
+      if (el.tagName === 'IMG' && !fileExt.test(raw) && !/^blob:|^data:/i.test(url)) return;
+
+      var name = inferAttachmentName(label, url);
+      if (!name) return;
+      if (/^(file|attachment|upload|download|文件|附件|上传|下载)$/i.test(name.trim())) return;
+      files.push({
+        name: name,
+        type: inferAttachmentType(name, el.tagName),
+        size: inferAttachmentSize(label),
+        url: normalizeAttachmentUrl(url)
+      });
+    });
+    return mergeAttachments([], files).slice(0, 12);
+  }
+
+  function extractPageAttachments() {
+    return extractAttachments(document.body).slice(0, 50);
+  }
+
+  function scanPageFilesOnly() {
+    var files = extractPageAttachments();
+    var existingKeys = new Set();
+    capturedItems.forEach(function(item) {
+      (item.attachments || []).forEach(function(file) {
+        existingKeys.add((file.name || '') + '|' + (file.url || ''));
+      });
+    });
+    var fileItems = files.filter(function(file) {
+      return !existingKeys.has((file.name || '') + '|' + (file.url || ''));
+    }).map(function(file, idx) {
+      return {
+        id: 'file_' + Date.now() + '_' + idx,
+        title: '📎 ' + (file.name || '对话附件'),
+        content: buildAttachmentContent([file]),
+        attachments: [file],
+        role: 'file',
+        selected: true,
+        element: null
+      };
+    });
+
+    if (fileItems.length === 0) {
+      showToast(files.length > 0 ? '📎 文件已在扫描结果中' : '未识别到页面文件');
+      renderScanList();
+      return;
+    }
+    capturedItems = capturedItems.concat(fileItems);
+    renderScanList();
+    showToast('📎 已识别 ' + fileItems.length + ' 个文件');
+  }
+
+  function buildAttachmentContent(files) {
+    files = files || [];
+    if (files.length === 0) return '';
+    return '相关文件：\n' + files.map(function(file) {
+      return '- ' + (file.name || '未命名文件')
+        + (file.size ? '（' + file.size + '）' : '')
+        + (file.url ? '\n  链接：' + file.url : '');
+    }).join('\n');
+  }
+
+  function inferAttachmentName(label, url) {
+    var cleaned = String(label || '').replace(/\s+/g, ' ').trim();
+    var extMatch = cleaned.match(/[^\\/:*?"<>|\s][^\\/:*?"<>|]*\.(pdf|docx?|xlsx?|pptx?|txt|md|csv|tsv|json|xml|zip|rar|7z|tar|gz|png|jpe?g|gif|webp|svg|mp[34]|wav|m4a|py|js|ts|tsx|jsx|c|cc|cpp|h|hpp|sv|v|vh|java|go|rs|sh|bat|ps1|log)/i);
+    if (extMatch) return extMatch[0].slice(0, 120);
+    if (url) {
+      try {
+        var path = new URL(url, location.href).pathname;
+        var last = decodeURIComponent(path.split('/').filter(Boolean).pop() || '');
+        if (last) return last.slice(0, 120);
+      } catch (e) {}
+    }
+    return cleaned ? cleaned.slice(0, 80) : '';
+  }
+
+  function inferAttachmentType(name, tagName) {
+    var ext = (String(name).match(/\.([a-z0-9]+)$/i) || [])[1];
+    if (ext) return ext.toLowerCase();
+    return String(tagName || 'file').toLowerCase();
+  }
+
+  function inferAttachmentSize(text) {
+    var match = String(text || '').match(/\b\d+(?:\.\d+)?\s*(?:KB|MB|GB|B|字节)\b/i);
+    return match ? match[0] : '';
+  }
+
+  function normalizeAttachmentUrl(url) {
+    if (!url) return '';
+    try { return new URL(url, location.href).href; } catch (e) { return url; }
+  }
+
+  function mergeAttachments(base, extra) {
+    var out = [];
+    var seen = new Set();
+    (base || []).concat(extra || []).forEach(function(file) {
+      var key = (file.name || '') + '|' + (file.url || '');
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(file);
+    });
+    return out;
   }
 
   function scanPageMessages() {
@@ -592,7 +745,8 @@
     renderScanList();
     var userCount = messages.filter(function(m) { return m.role === 'user'; }).length;
     var aiCount   = messages.filter(function(m) { return m.role === 'ai'; }).length;
-    showToast('\uD83D\uDD0D \u626B\u63CF\u5B8C\u6210\uFF1A\uD83D\uDC64' + userCount + '\u6761\u6307\u4EE4 + \uD83E\uDD16' + aiCount + '\u6761\u56DE\u590D');
+    var fileCount = messages.reduce(function(n, m) { return n + ((m.attachments && m.attachments.length) || 0); }, 0);
+    showToast('\uD83D\uDD0D \u626B\u63CF\u5B8C\u6210\uFF1A\uD83D\uDC64' + userCount + '\u6761\u6307\u4EE4 + \uD83E\uDD16' + aiCount + '\u6761\u56DE\u590D + \uD83D\uDCCE' + fileCount + '\u4E2A\u6587\u4EF6');
     startScrollWatch();
   }
 
@@ -639,8 +793,11 @@
     if (!list) return;
     var countEl = document.getElementById('amb-scan-count');
     if (countEl) {
+      var fileCount = capturedItems.reduce(function(n, item) {
+        return n + ((item.attachments && item.attachments.length) || 0);
+      }, 0);
       countEl.textContent = capturedItems.length > 0
-        ? '已识别 ' + capturedItems.length + ' 条指令'
+        ? '已识别 ' + capturedItems.length + ' 条内容' + (fileCount ? ' · ' + fileCount + ' 个文件' : ' · 0 个文件')
         : '未扫描';
     }
     if (capturedItems.length === 0) {
@@ -656,9 +813,10 @@
         '      <span class="amb-item-title">' + escapeHtml(item.title) + '</span>',
         '      <span class="amb-item-num">#' + (idx + 1) + '</span>',
         '    </div>',
-        '    <div class="amb-item-content">' + escapeHtml(item.content.slice(0, 200)) + (item.content.length > 200 ? '...' : '') + '</div>',
+        '    <div class="amb-item-content">' + escapeHtml((item.content || item.title || '').slice(0, 200)) + ((item.content || '').length > 200 ? '...' : '') + '</div>',
+        renderAttachmentChips(item.attachments),
         '    <div class="amb-item-meta">',
-        '      <span class="amb-usage">' + item.content.length + ' 字符</span>',
+        '      <span class="amb-usage">' + item.content.length + ' 字符' + ((item.attachments && item.attachments.length) ? ' · ' + item.attachments.length + ' 个文件' : '') + '</span>',
         '      <div class="amb-item-btns">',
         '        <button class="amb-copy-btn" data-idx="' + idx + '" title="复制">📋</button>',
         '        <button class="amb-inject-btn" data-idx="' + idx + '" title="注入到输入框">📤</button>',
@@ -691,6 +849,14 @@
         if (capturedItems[idx]) injectText(capturedItems[idx].content);
       });
     });
+  }
+
+  function renderAttachmentChips(attachments) {
+    if (!attachments || attachments.length === 0) return '';
+    return '<div class="amb-file-list">' + attachments.map(function(file) {
+      var label = '📎 ' + (file.name || '文件') + (file.size ? ' · ' + file.size : '');
+      return '<span class="amb-file-chip" title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>';
+    }).join('') + '</div>';
   }
 
   function toggleSelectAll(select) {
@@ -744,7 +910,7 @@
       safeMsg({
         type: 'SAVE_MULTI_MEMORIES',
         data: {
-          items: items.map(function(item) { return { title: item.title, content: item.content, tag: tag }; }),
+          items: items.map(function(item) { return { title: item.title, content: item.content, attachments: item.attachments || [], role: item.role || 'manual', tag: tag }; }),
           defaultTag: tag,
           sourcePlatform: platform.name
         }
@@ -770,7 +936,7 @@
       safeMsg({
         type: 'SAVE_MULTI_MEMORIES',
         data: {
-          items: items.map(function(item) { return { title: item.title, content: item.content, tag: tag }; }),
+          items: items.map(function(item) { return { title: item.title, content: item.content, attachments: item.attachments || [], role: item.role || 'manual', tag: tag }; }),
           defaultTag: tag,
           sourcePlatform: platform.name
         }
@@ -1068,9 +1234,12 @@
         var m = sorted[i];
         if (m.role === 'user') {
           var nx = sorted[i + 1];
-          if (nx && nx.role === 'ai') { pairs.push({ q: m.content, a: nx.content }); i += 2; }
-          else { pairs.push({ q: m.content, a: '' }); i++; }
-        } else { pairs.push({ q: '', a: m.content }); i++; }
+          if (nx && nx.role === 'ai') {
+            pairs.push({ q: m.content, a: nx.content, qAttachments: m.attachments || [], aAttachments: nx.attachments || [] });
+            i += 2;
+          }
+          else { pairs.push({ q: m.content, a: '', qAttachments: m.attachments || [], aAttachments: [] }); i++; }
+        } else { pairs.push({ q: '', a: m.content, qAttachments: [], aAttachments: m.attachments || [] }); i++; }
       }
 
       safeMsg({
@@ -1082,7 +1251,7 @@
           downloadHTMLFile(html, group.name.replace(/[\\/:*?"<>|]/g, '_') + '_笔记_AI整理.html');
           showToast('🤖 AI 笔记已生成！');
         } else {
-          showToast('⚠️ AI 生成失败，已使用普通模式');
+          showToast('⚠️ AI 生成失败: ' + (res2 && res2.error ? res2.error : '未知错误') + '，已使用普通模式');
           var html = generateNotesHTML(group, mems);
           downloadHTMLFile(html, group.name.replace(/[\\/:*?"<>|]/g, '_') + '_笔记.html');
         }

@@ -39,6 +39,15 @@ const PLATFORM_CONFIG = {
   }
 };
 
+const DEFAULT_SETTINGS = {
+  autoCapture: false,
+  showFloatButton: true,
+  defaultTag: '通用',
+  aiApiKey: '',
+  aiApiEndpoint: 'https://api.openai.com/v1/chat/completions',
+  aiApiModel: 'gpt-3.5-turbo'
+};
+
 // 初始化存储
 chrome.runtime.onInstalled.addListener(async () => {
   const existing = await chrome.storage.local.get(['memories', 'groups', 'settings']);
@@ -46,16 +55,15 @@ chrome.runtime.onInstalled.addListener(async () => {
     await chrome.storage.local.set({
       memories: [],
       groups: [],
-      settings: {
-        autoCapture: false,
-        showFloatButton: true,
-        defaultTag: '通用'
-      }
+      settings: DEFAULT_SETTINGS
     });
   }
   if (!existing.groups) {
     await chrome.storage.local.set({ groups: [] });
   }
+  await chrome.storage.local.set({
+    settings: { ...DEFAULT_SETTINGS, ...(existing.settings || {}) }
+  });
   console.log('[AI Memory Bridge] 插件已初始化');
 });
 
@@ -75,6 +83,8 @@ async function handleMessage(message, sender, sendResponse) {
           id: Date.now().toString(),
           title: message.data.title || '未命名记忆',
           content: message.data.content,
+          attachments: normalizeAttachments(message.data.attachments),
+          role: message.data.role || 'manual',
           tag: message.data.tag || '通用',
           sourcePlatform: message.data.sourcePlatform || '未知',
           sourceUrl: sender.url || '',
@@ -96,6 +106,8 @@ async function handleMessage(message, sender, sendResponse) {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
           title: item.title || '未命名记忆',
           content: item.content,
+          attachments: normalizeAttachments(item.attachments),
+          role: item.role || 'manual',
           tag: item.tag || message.data.defaultTag || '通用',
           sourcePlatform: message.data.sourcePlatform || '未知',
           sourceUrl: sender.url || '',
@@ -336,12 +348,15 @@ async function handleMessage(message, sender, sendResponse) {
 
       case 'GET_SETTINGS': {
         const data = await chrome.storage.local.get('settings');
-        sendResponse({ success: true, settings: data.settings });
+        sendResponse({ success: true, settings: { ...DEFAULT_SETTINGS, ...(data.settings || {}) } });
         break;
       }
 
       case 'SAVE_SETTINGS': {
-        await chrome.storage.local.set({ settings: message.settings });
+        const data = await chrome.storage.local.get('settings');
+        await chrome.storage.local.set({
+          settings: { ...DEFAULT_SETTINGS, ...(data.settings || {}), ...(message.settings || {}) }
+        });
         sendResponse({ success: true });
         break;
       }
@@ -351,18 +366,26 @@ async function handleMessage(message, sender, sendResponse) {
         try {
           const { pairs, groupName, sourcePlatform } = message.data;
           const settings = (await chrome.storage.local.get('settings')).settings || {};
-          const apiKey = settings.aiApiKey || '';
-          const apiEndpoint = settings.aiApiEndpoint || 'https://api.openai.com/v1/chat/completions';
-          const apiModel = settings.aiApiModel || 'gpt-3.5-turbo';
+          const apiKey = (settings.aiApiKey || '').trim();
+          const apiEndpoint = (settings.aiApiEndpoint || DEFAULT_SETTINGS.aiApiEndpoint).trim();
+          const apiModel = (settings.aiApiModel || DEFAULT_SETTINGS.aiApiModel).trim();
 
           if (!apiKey) {
             sendResponse({ success: false, error: '请先在设置中配置 AI API Key' });
             break;
           }
 
+          if (!apiEndpoint) {
+            sendResponse({ success: false, error: '请先在设置中配置 AI API 地址' });
+            break;
+          }
+
           // 构建 prompt：将问答对转为连贯笔记
           const conversationText = pairs.map(function(p, i) {
-            return '【问答' + (i+1) + '】\n提问：' + (p.q || '（无提问）') + '\n回答：' + (p.a || '（无回答）');
+            return '【问答' + (i+1) + '】\n提问：' + (p.q || '（无提问）')
+              + formatPromptAttachments('提问附件', p.qAttachments)
+              + '\n回答：' + (p.a || '（无回答）')
+              + formatPromptAttachments('回答附件', p.aAttachments);
           }).join('\n\n');
 
           const prompt = '你是一个专业的笔记整理助手。请将以下AI对话记录整理成一篇结构清晰、语言流畅的笔记文章。\n\n'
@@ -401,9 +424,7 @@ async function handleMessage(message, sender, sendResponse) {
           }
 
           const result = await response.json();
-          var generatedHTML = result.choices && result.choices[0] && result.choices[0].message
-            ? result.choices[0].message.content
-            : '';
+          var generatedHTML = extractAIContent(result);
 
           if (!generatedHTML) {
             sendResponse({ success: false, error: 'AI 返回内容为空' });
@@ -425,6 +446,50 @@ async function handleMessage(message, sender, sendResponse) {
     console.error('[AI Memory Bridge] 错误:', err);
     sendResponse({ success: false, error: err.message });
   }
+}
+
+function extractAIContent(result) {
+  const choice = result && result.choices && result.choices[0];
+  if (!choice) return '';
+
+  if (choice.message) {
+    const content = choice.message.content;
+    if (typeof content === 'string') return content.trim();
+    if (Array.isArray(content)) {
+      return content.map(function(part) {
+        if (typeof part === 'string') return part;
+        return part.text || part.content || '';
+      }).join('').trim();
+    }
+  }
+
+  if (typeof choice.text === 'string') return choice.text.trim();
+  if (choice.delta && typeof choice.delta.content === 'string') return choice.delta.content.trim();
+  return '';
+}
+
+function normalizeAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  const seen = new Set();
+  return attachments.map(item => ({
+    name: String(item.name || item.url || '未命名文件').slice(0, 160),
+    type: String(item.type || 'file').slice(0, 40),
+    size: item.size ? String(item.size).slice(0, 40) : '',
+    url: item.url ? String(item.url).slice(0, 1200) : ''
+  })).filter(item => {
+    const key = item.name + '|' + item.url;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return item.name || item.url;
+  }).slice(0, 20);
+}
+
+function formatPromptAttachments(label, attachments) {
+  attachments = normalizeAttachments(attachments);
+  if (attachments.length === 0) return '';
+  return '\n' + label + '：\n' + attachments.map(file => {
+    return '- ' + file.name + (file.size ? '（' + file.size + '）' : '') + (file.url ? ' ' + file.url : '');
+  }).join('\n');
 }
 
 async function getMemories() {

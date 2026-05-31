@@ -3,7 +3,7 @@
 
 // ── 全局 HTML 转义工具 ──
 function esc(s) {
-  return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /**
@@ -44,13 +44,21 @@ function generateNotesHTML(group, mems, options) {
       var m = sorted[i];
       if (m.role === 'user') {
         var nx = sorted[i + 1];
-        if (nx && nx.role === 'ai') { pairs.push({ q: m.content, a: nx.content }); i += 2; }
-        else { pairs.push({ q: m.content, a: '' }); i++; }
-      } else { pairs.push({ q: '', a: m.content }); i++; }
+        if (nx && nx.role === 'ai') {
+          pairs.push({ q: m.content, a: nx.content, qAttachments: m.attachments || [], aAttachments: nx.attachments || [] });
+          i += 2;
+        }
+        else { pairs.push({ q: m.content, a: '', qAttachments: m.attachments || [], aAttachments: [] }); i++; }
+      } else { pairs.push({ q: '', a: m.content, qAttachments: [], aAttachments: m.attachments || [] }); i++; }
     }
   } else {
     for (var j = 0; j < sorted.length; j += 2) {
-      pairs.push({ q: sorted[j] ? sorted[j].content : '', a: sorted[j+1] ? sorted[j+1].content : '' });
+      pairs.push({
+        q: sorted[j] ? sorted[j].content : '',
+        a: sorted[j+1] ? sorted[j+1].content : '',
+        qAttachments: sorted[j] ? (sorted[j].attachments || []) : [],
+        aAttachments: sorted[j+1] ? (sorted[j+1].attachments || []) : []
+      });
     }
   }
 
@@ -122,11 +130,29 @@ function generateNotesHTML(group, mems, options) {
     }).join('');
   }
 
+  function filesToHTML(files) {
+    files = Array.isArray(files) ? files : [];
+    if (files.length === 0) return '';
+    var seen = new Set();
+    var items = files.filter(function(file) {
+      var key = (file.name || '') + '|' + (file.url || '');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return file.name || file.url;
+    }).map(function(file) {
+      var label = esc(file.name || file.url || '未命名文件') + (file.size ? ' <span>' + esc(file.size) + '</span>' : '');
+      if (file.url) return '<li><a href="' + esc(file.url) + '" target="_blank" rel="noreferrer">' + label + '</a></li>';
+      return '<li>' + label + '</li>';
+    }).join('');
+    return '<div class="note-files"><strong>相关文件</strong><ul>' + items + '</ul></div>';
+  }
+
   // ── 7. 构建初始内容 ──
   var date = new Date().toLocaleDateString('zh-CN');
   var sections = fp.map(function(p, idx) {
     var title = makeTitle(p, idx);
-    var content = p.a ? textToHTML(cleanText(p.a)) : (p.q ? textToHTML(p.q) : '<p></p>');
+    var files = filesToHTML([].concat(p.qAttachments || [], p.aAttachments || []));
+    var content = files + (p.a ? textToHTML(cleanText(p.a)) : (p.q ? textToHTML(p.q) : '<p></p>'));
     return '<h2 id="h' + idx + '">' + esc(title) + '</h2>\n' + content;
   }).join('\n\n');
 
@@ -210,6 +236,12 @@ function buildEditableHTML(group, bodyContent, isAIGenerated) {
     '#editor code{background:#f3f3f3;padding:1px 5px;border-radius:2px;font-family:Consolas,monospace;font-size:13px}',
     '#editor pre code{background:none;padding:0}',
     '#editor blockquote{border-left:4px solid #0078d4;background:#f6f8ff;padding:10px 16px;margin:0 0 12px;color:#444;border-radius:0 4px 4px 0}',
+    '.note-files{background:#f8f5ff;border:1px solid #ded3ff;border-radius:4px;padding:10px 12px;margin:0 0 14px;color:#4c1d95}',
+    '.note-files strong{display:block;font-size:13px;margin-bottom:6px}',
+    '.note-files ul{margin:0;padding-left:18px}',
+    '.note-files a{color:#5b21b6;text-decoration:none}',
+    '.note-files a:hover{text-decoration:underline}',
+    '.note-files span{color:#777;font-size:12px}',
     'footer{text-align:center;padding:12px;font-size:12px;color:#aaa;border-top:1px solid #eee;background:#fff;flex-shrink:0}',
     '@media(max-width:800px){.layout{flex-direction:column}aside{width:100%}.toc-wrap{position:static}#toc-list{max-height:160px}#editor{padding:20px 16px}}',
     '@media print{.hdr,.toolbar,aside,footer{display:none!important}.layout{padding:0;max-width:100%}#editor{border:none;box-shadow:none;padding:0}}'
