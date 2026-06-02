@@ -313,4 +313,10 @@ MIT License
 
 ---
 
+## 🔐 隐私政策
+
+隐私政策见 [PRIVACY.md](./PRIVACY.md)。
+
+---
+
 **如果这个插件对你有帮助，欢迎给 GitHub 仓库点个 ⭐！**
