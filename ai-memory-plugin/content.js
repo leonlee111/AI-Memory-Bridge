@@ -379,6 +379,7 @@
     // priority越小越可信，不允许低优先级覆盖高优先级的角色
     function tryAdd(el, role, priority) {
       if (!el || !el.isConnected) return;
+      if (el.closest('#ai-memory-panel,#ai-memory-float-btn,#amb-toast')) return;
       var existing = elMap.get(el);
       if (existing && existing.priority <= priority) return;
       elMap.set(el, { role: role, priority: priority });
@@ -533,7 +534,11 @@
       if (pendingAiText !== null) {
         var text = pendingAiText.trim();
         if (text.length >= 3 || pendingAiAttachments.length > 0) {
-          var key = text.length + '|' + text.slice(0, 80) + '|' + pendingAiAttachments.map(function(f) { return f.name; }).join(',');
+          var key = scanItemKey({
+            role: 'ai',
+            content: text,
+            attachments: pendingAiAttachments
+          });
           if (!seenContent.has(key)) {
             seenContent.add(key);
             var titleText = text.replace(/\n+/g, ' ').trim();
@@ -564,7 +569,11 @@
       if (item.role === 'user') {
         // 遇到用户消息，先flush累积的AI文本
         flushPendingAi();
-        var key = text.length + '|' + text.slice(0, 80) + '|' + attachments.map(function(f) { return f.name; }).join(',');
+        var key = scanItemKey({
+          role: 'user',
+          content: text,
+          attachments: attachments
+        });
         if (seenContent.has(key)) return;
         seenContent.add(key);
         var titleText = text.replace(/\n+/g, ' ').trim();
@@ -730,6 +739,61 @@
     return String(text || '').replace(/\n{0,2}相关文件：\n(?:- .+(?:\n  链接：.+)?\n?)+$/m, '').trim();
   }
 
+  function normalizeScanText(text) {
+    return stripAttachmentBlock(text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/[，。！？；：,.!?;:]+$/g, '')
+      .trim();
+  }
+
+  function attachmentIdentity(file) {
+    return ((file && file.name) || '') + '|' + ((file && file.url) || '');
+  }
+
+  function scanItemKey(item) {
+    var role = item && item.role ? item.role : 'unknown';
+    var text = normalizeScanText((item && item.content) || (item && item.title) || '');
+    if (text) {
+      return role + '|text|' + text.length + '|' + text.slice(0, 180) + '|' + text.slice(-80);
+    }
+    var files = ((item && item.attachments) || []).map(attachmentIdentity).sort().join(',');
+    return role + '|files|' + files;
+  }
+
+  function mergeScanResults(existing, incoming) {
+    var merged = [];
+    var indexByKey = new Map();
+
+    function addOrMerge(item, preserveSelected) {
+      if (!item) return;
+      var key = scanItemKey(item);
+      if (!key) return;
+      if (!indexByKey.has(key)) {
+        var copy = Object.assign({}, item);
+        copy.attachments = (item.attachments || []).slice();
+        if (preserveSelected && typeof item.selected === 'boolean') copy.selected = item.selected;
+        merged.push(copy);
+        indexByKey.set(key, merged.length - 1);
+        return;
+      }
+
+      var existingItem = merged[indexByKey.get(key)];
+      var attachments = mergeAttachments(existingItem.attachments || [], item.attachments || []);
+      var existingBase = normalizeScanText(existingItem.content || '');
+      var incomingBase = normalizeScanText(item.content || '');
+      var base = incomingBase.length > existingBase.length ? stripAttachmentBlock(item.content || '') : stripAttachmentBlock(existingItem.content || '');
+      existingItem.attachments = attachments;
+      existingItem.content = appendAttachmentsToContent(base, attachments);
+      existingItem.title = existingItem.title || item.title;
+      existingItem.element = item.element || existingItem.element || null;
+      if (typeof existingItem.selected !== 'boolean') existingItem.selected = item.selected !== false;
+    }
+
+    (existing || []).forEach(function(item) { addOrMerge(item, true); });
+    (incoming || []).forEach(function(item) { addOrMerge(item, false); });
+    return merged;
+  }
+
   function inferAttachmentName(label, url) {
     var cleaned = String(label || '').replace(/\s+/g, ' ').trim();
     var extMatch = cleaned.match(/[^\\/:*?"<>|\s][^\\/:*?"<>|]*\.(pdf|docx?|xlsx?|pptx?|txt|md|csv|tsv|json|xml|zip|rar|7z|tar|gz|png|jpe?g|gif|webp|svg|mp[34]|wav|m4a|py|js|ts|tsx|jsx|c|cc|cpp|h|hpp|sv|v|vh|java|go|rs|sh|bat|ps1|log)/i);
@@ -774,11 +838,11 @@
 
   function scanPageMessages() {
     var messages = collectMessages();
-    capturedItems = messages;
+    capturedItems = mergeScanResults([], messages);
     renderScanList();
-    var userCount = messages.filter(function(m) { return m.role === 'user'; }).length;
-    var aiCount   = messages.filter(function(m) { return m.role === 'ai'; }).length;
-    var fileCount = messages.reduce(function(n, m) { return n + ((m.attachments && m.attachments.length) || 0); }, 0);
+    var userCount = capturedItems.filter(function(m) { return m.role === 'user'; }).length;
+    var aiCount   = capturedItems.filter(function(m) { return m.role === 'ai'; }).length;
+    var fileCount = capturedItems.reduce(function(n, m) { return n + ((m.attachments && m.attachments.length) || 0); }, 0);
     showToast('\uD83D\uDD0D \u626B\u63CF\u5B8C\u6210\uFF1A\uD83D\uDC64' + userCount + '\u6761\u6307\u4EE4 + \uD83E\uDD16' + aiCount + '\u6761\u56DE\u590D + \uD83D\uDCCE' + fileCount + '\u4E2A\u6587\u4EF6');
     startScrollWatch();
   }
@@ -805,18 +869,14 @@
   }
 
   function checkNewMessages() {
-    // 用 collectMessages 重新扫描，与已捕获内容做差集
-    var existingKeys = new Set(capturedItems.map(function(m) {
-      return m.content.length + '|' + m.content.slice(0, 80);
-    }));
+    // 用稳定指纹重新扫描并合并，避免页面重渲染后重复追加同一条内容
+    var beforeCount = capturedItems.length;
     var fresh = collectMessages();
-    var newItems = fresh.filter(function(m) {
-      return !existingKeys.has(m.content.length + '|' + m.content.slice(0, 80));
-    });
-    if (newItems.length > 0) {
-      capturedItems = capturedItems.concat(newItems);
+    capturedItems = mergeScanResults(capturedItems, fresh);
+    var addedCount = capturedItems.length - beforeCount;
+    if (addedCount > 0) {
       renderScanList();
-      showToast('\uD83D\uDCE5 \u53D1\u73B0 ' + newItems.length + ' \u6761\u65B0\u6D88\u606F');
+      showToast('\uD83D\uDCE5 \u53D1\u73B0 ' + addedCount + ' \u6761\u65B0\u6D88\u606F');
     }
   }
 
