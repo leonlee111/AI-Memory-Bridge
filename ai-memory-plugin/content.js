@@ -112,6 +112,7 @@
   let capturedItems = [];
   let scrollObserver = null;
   let _contextInvalid = false;
+  let _contextInvalidNotified = false;
 
   // ── 安全消息发送（防止插件重载后上下文失效崩溃）────────────
   function safeMsg(msg, callback) {
@@ -147,14 +148,31 @@
   }
 
   function _onContextInvalid() {
-    // 隐藏面板和按钮，提示用户刷新
-    if (panel) panel.style.display = 'none';
+    _contextInvalid = true;
+    if (scrollObserver) {
+      scrollObserver.disconnect();
+      scrollObserver = null;
+    }
+    window.removeEventListener('scroll', onScroll);
+
+    // 隐藏旧面板，悬浮按钮改为刷新入口，避免继续触发失效 content script。
+    if (panel) {
+      panel.style.display = 'none';
+      isVisible = false;
+    }
     if (floatBtn) {
       floatBtn.style.opacity = '0.4';
-      floatBtn.title = '插件已更新，请刷新页面';
+      floatBtn.title = '插件已更新，点击刷新页面';
+      floatBtn.removeEventListener('click', togglePanel);
+      floatBtn.addEventListener('click', function refreshAfterUpdate() {
+        window.location.reload();
+      }, { once: true });
     }
-    showToast('⚠️ 插件已更新，请刷新页面后继续使用');
-    console.warn('[AI Memory Bridge] Extension context invalidated. Please refresh the page.');
+    if (!_contextInvalidNotified) {
+      _contextInvalidNotified = true;
+      showToast('⚠️ 插件已更新，点击悬浮按钮或刷新页面后继续使用');
+      console.info('[AI Memory Bridge] Extension context invalidated. Please refresh the page.');
+    }
   }
 
   // ── 悬浮按钮 ──────────────────────────────────────────────
@@ -361,6 +379,10 @@
   }
 
   function togglePanel() {
+    if (_contextInvalid) {
+      _onContextInvalid();
+      return;
+    }
     if (!panel) createPanel();
     isVisible = !isVisible;
     panel.style.display = isVisible ? 'flex' : 'none';
@@ -1491,34 +1513,40 @@
   }
 
   // ── 消息监听 ──────────────────────────────────────────────
-  chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-    switch (message.type) {
-      case 'INJECT_MEMORY':
-        // 支持两种方式：按ID查记忆 或 直接注入content字段（项目组合并内容）
-        if (message.content) {
-          injectText(message.content);
-          if (message.id) safeMsg({ type: 'USE_MEMORY', id: message.id });
-        } else {
-          injectMemory(message.id);
-        }
-        sendResponse({ success: true });
-        break;
-      case 'OPEN_PANEL':
-        if (!panel) createPanel();
-        panel.style.display = 'flex';
-        isVisible = true;
-        loadMemories();
-        loadGroups();
-        sendResponse({ success: true });
-        break;
-      case 'CLOSE_PANEL':
-        if (panel) panel.style.display = 'none';
-        isVisible = false;
-        sendResponse({ success: true });
-        break;
-    }
-    return true;
-  });
+  if (chrome.runtime && chrome.runtime.id) {
+    chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+      if (_contextInvalid) {
+        sendResponse({ success: false, error: 'Extension context invalidated. Please refresh the page.' });
+        return true;
+      }
+      switch (message.type) {
+        case 'INJECT_MEMORY':
+          // 支持两种方式：按ID查记忆 或 直接注入content字段（项目组合并内容）
+          if (message.content) {
+            injectText(message.content);
+            if (message.id) safeMsg({ type: 'USE_MEMORY', id: message.id });
+          } else {
+            injectMemory(message.id);
+          }
+          sendResponse({ success: true });
+          break;
+        case 'OPEN_PANEL':
+          if (!panel) createPanel();
+          panel.style.display = 'flex';
+          isVisible = true;
+          loadMemories();
+          loadGroups();
+          sendResponse({ success: true });
+          break;
+        case 'CLOSE_PANEL':
+          if (panel) panel.style.display = 'none';
+          isVisible = false;
+          sendResponse({ success: true });
+          break;
+      }
+      return true;
+    });
+  }
 
   // ── 初始化 ────────────────────────────────────────────────
   function init() {

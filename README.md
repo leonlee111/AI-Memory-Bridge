@@ -1,4 +1,4 @@
-# 🧠 AI Memory Bridge v2.3.1
+# 🧠 AI Memory Bridge v2.3.2
 
 **跨平台 AI 对话记忆管理插件** — 在 Gemini、DeepSeek、Claude、ChatGPT、Kimi、通义千问 等 AI 平台之间，轻松抓取、保存、管理和注入你的指令与 AI 回复。
 
@@ -177,9 +177,9 @@
 
 当前版本已完成 Chrome Web Store / Microsoft Edge Add-ons 上架前准备：
 
-- `manifest.json` 已升级到 Manifest V3，版本号 `2.3.1`
+- `manifest.json` 已升级到 Manifest V3，版本号 `2.3.2`
 - 已去除远程 Google Fonts 依赖，减少商店审核风险
-- 商店上传包建议命名为 `AI-Memory-Bridge-v2.3.1-store.zip`
+- 商店上传包建议命名为 `AI-Memory-Bridge-v2.3.2-store.zip`
 - ZIP 包内 `manifest.json` 必须位于根目录，可直接上传到 Chrome/Edge 开发者后台
 
 本地打包命令：
@@ -187,7 +187,7 @@
 ```powershell
 if (!(Test-Path .\dist)) { New-Item -ItemType Directory .\dist | Out-Null }
 $items = Get-ChildItem -LiteralPath .\ai-memory-plugin -Force
-Compress-Archive -LiteralPath $items.FullName -DestinationPath .\dist\AI-Memory-Bridge-v2.3.1-store.zip -Force
+Compress-Archive -LiteralPath $items.FullName -DestinationPath .\dist\AI-Memory-Bridge-v2.3.2-store.zip -Force
 ```
 
 上架仍需要开发者账号后台人工操作：
@@ -247,7 +247,14 @@ ai-memory-plugin/
 
 ## 📝 版本历史
 
-### v2.3.1（当前版本）
+### v2.3.2（当前版本）
+
+- ✅ 优化扩展热更新后的旧页面脚本处理：只提示一次，不再反复触发消息请求
+- ✅ 扩展上下文失效后悬浮按钮变为“点击刷新页面”入口
+- ✅ 隐藏旧面板并停止滚动监听，避免控制台反复出现 context invalidated 提示
+- ✅ manifest 版本号更新为 `2.3.2`
+
+### v2.3.1
 
 - ✅ 修复页面浮窗持续补扫时重复追加同一条搜索/扫描结果的问题
 - ✅ 补扫时会合并已有条目的附件和内容，不再盲目新增重复卡片
