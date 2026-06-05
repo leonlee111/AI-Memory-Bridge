@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "AI Memory Bridge",
-  "version": "2.3.2",
-  "description": "跨 AI 平台扫描、保存、注入对话记忆，并导出可编辑笔记",
+  "name": "__MSG_extensionName__",
+  "version": "2.3.3",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
   "permissions": [
     "storage",
     "activeTab",

@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AI Memory Bridge",
+    "description": "Extension name"
+  },
+  "extensionDescription": {
+    "message": "跨 AI 平台扫描、保存、复用和导出选中的对话记忆。",
+    "description": "Short extension description"
+  }
+}

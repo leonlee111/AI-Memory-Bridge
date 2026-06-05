@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AI Memory Bridge",
+    "description": "Extension name"
+  },
+  "extensionDescription": {
+    "message": "Scan, save, reuse, and export selected AI chat memories across supported AI platforms.",
+    "description": "Short extension description"
+  }
+}

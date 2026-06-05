@@ -1,4 +1,4 @@
-# 🧠 AI Memory Bridge v2.3.2
+# 🧠 AI Memory Bridge v2.3.3
 
 **跨平台 AI 对话记忆管理插件** — 在 Gemini、DeepSeek、Claude、ChatGPT、Kimi、通义千问 等 AI 平台之间，轻松抓取、保存、管理和注入你的指令与 AI 回复。
 
@@ -173,32 +173,6 @@
 
 ---
 
-## 🛒 商店上架
-
-当前版本已完成 Chrome Web Store / Microsoft Edge Add-ons 上架前准备：
-
-- `manifest.json` 已升级到 Manifest V3，版本号 `2.3.2`
-- 已去除远程 Google Fonts 依赖，减少商店审核风险
-- 商店上传包建议命名为 `AI-Memory-Bridge-v2.3.2-store.zip`
-- ZIP 包内 `manifest.json` 必须位于根目录，可直接上传到 Chrome/Edge 开发者后台
-
-本地打包命令：
-
-```powershell
-if (!(Test-Path .\dist)) { New-Item -ItemType Directory .\dist | Out-Null }
-$items = Get-ChildItem -LiteralPath .\ai-memory-plugin -Force
-Compress-Archive -LiteralPath $items.FullName -DestinationPath .\dist\AI-Memory-Bridge-v2.3.2-store.zip -Force
-```
-
-上架仍需要开发者账号后台人工操作：
-
-1. Chrome Web Store：登录 Chrome Web Store Developer Dashboard，上传 ZIP，填写详情、隐私字段、权限说明、测试说明后提交审核。
-2. Microsoft Edge Add-ons：登录 Partner Center，创建新扩展，上传 ZIP，填写可用市场、隐私信息、商店详情和认证测试说明后提交。
-
-权限说明建议：插件需要读取支持的 AI 页面以扫描对话；需要 `storage` 保存本地记忆；需要 `clipboardWrite` 支持复制/兜底注入；需要网络权限访问用户配置的 OpenAI 兼容 API 端点以生成 AI 笔记。
-
----
-
 ## 📁 文件结构
 
 ```
@@ -247,7 +221,14 @@ ai-memory-plugin/
 
 ## 📝 版本历史
 
-### v2.3.2（当前版本）
+### v2.3.3（当前版本）
+
+- ✅ manifest 改为 Chrome/Edge 标准 i18n 占位符
+- ✅ 新增 `_locales/en` 和 `_locales/zh_CN`，支持商店后台识别英文/简体中文语言包
+- ✅ 删除 README 中面向发布者的打包发布说明，让 GitHub 首页更面向用户
+- ✅ manifest 版本号更新为 `2.3.3`
+
+### v2.3.2
 
 - ✅ 优化扩展热更新后的旧页面脚本处理：只提示一次，不再反复触发消息请求
 - ✅ 扩展上下文失效后悬浮按钮变为“点击刷新页面”入口
